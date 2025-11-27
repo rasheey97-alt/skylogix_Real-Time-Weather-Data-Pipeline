@@ -1,0 +1,5 @@
+scrape_configs:
+  - job_name: "weather-pipeline"
+    scrape_interval: 5s  # Change this from default (e.g., 30s) to 5s
+    static_configs:
+      - targets: ["weather-pipeline:8000"]

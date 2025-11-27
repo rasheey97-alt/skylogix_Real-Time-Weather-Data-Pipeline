@@ -1,0 +1,178 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: weather-pipeline-config
+data:
+  config.yaml: |
+    api:
+      url: "https://api.openweathermap.org/data/2.5/weather"
+      key: "${OPENWEATHERMAP_KEY}"
+    
+    data:
+      cities:
+        - name: "New York"
+          country: "US"
+        - name: "London"
+          country: "GB"
+        - name: "Tokyo"
+          country: "JP"
+        - name: "Sydney"
+          country: "AU"
+        - name: "Berlin"
+          country: "DE"
+      raw_data_path: "/app/data/raw/"
+      processed_data_path: "/app/data/processed/"
+      output_data_path: "/app/data/output/"
+    
+    pipeline:
+      extract_frequency: "daily"
+      batch_size: 10
+      timeout: 30
+      retry_attempts: 3
+    
+    logging:
+      level: "INFO"
+      file: "/app/logs/pipeline.log"
+      format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    
+    monitoring:
+      prometheus_port: 8000
+      metrics_path: "/metrics"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: weather-pipeline-secrets
+type: Opaque
+data:
+  API_KEY: BASE64_ENCODED_API_KEY_HERE
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: weather-pipeline
+  labels:
+    app: weather-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: weather-pipeline
+  template:
+    metadata:
+      labels:
+        app: weather-pipeline
+    spec:
+      containers:
+      - name: weather-pipeline
+        image: weather-pipeline:latest
+        imagePullPolicy: IfNotPresent
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+        - name: data-volume
+          mountPath: /app/data
+        - name: logs-volume
+          mountPath: /app/logs
+        env:
+        - name: OPENWEATHERMAP_KEY
+          valueFrom:
+            secretKeyRef:
+              name: weather-pipeline-secrets
+              key: OPENWEATHERMAP_KEY
+        ports:
+        - containerPort: 8000
+          name: metrics
+        args: ["--config", "/app/config/config.yaml"]
+      volumes:
+      - name: config-volume
+        configMap:
+          name: weather-pipeline-config
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: weather-pipeline-data-pvc
+      - name: logs-volume
+        persistentVolumeClaim:
+          claimName: weather-pipeline-logs-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: weather-pipeline-data-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: weather-pipeline-logs-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: weather-pipeline-scheduler
+spec:
+  schedule: "0 0 * * *"  # Run at midnight every day
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: weather-pipeline
+            image: weather-pipeline:latest
+            imagePullPolicy: IfNotPresent
+            volumeMounts:
+            - name: config-volume
+              mountPath: /app/config
+            - name: data-volume
+              mountPath: /app/data
+            - name: logs-volume
+              mountPath: /app/logs
+            env:
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: weather-pipeline-secrets
+                  key: API_KEY
+            args: ["--config", "/app/config/config.yaml"]
+          volumes:
+          - name: config-volume
+            configMap:
+              name: weather-pipeline-config
+          - name: data-volume
+            persistentVolumeClaim:
+              claimName: weather-pipeline-data-pvc
+          - name: logs-volume
+            persistentVolumeClaim:
+              claimName: weather-pipeline-logs-pvc
+          restartPolicy: OnFailure
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: weather-pipeline-metrics
+spec:
+  selector:
+    app: weather-pipeline
+  ports:
+  - port: 8000
+    targetPort: metrics
+  type: ClusterIP

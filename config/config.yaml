@@ -1,0 +1,39 @@
+# API Configuration
+api:
+  url: "https://api.openweathermap.org/data/2.5/weather"
+  key: "${OPENWEATHERMAP_KEY}"  # Will be loaded from .env file
+
+# Data Configuration
+data:
+  cities:
+    - name: "New York"
+      country: "US"
+    - name: "London"
+      country: "GB"
+    - name: "Tokyo"
+      country: "JP"
+    - name: "Sydney"
+      country: "AU"
+    - name: "Berlin"
+      country: "DE"
+  raw_data_path: "./data/raw/"
+  processed_data_path: "./data/processed/"
+  output_data_path: "./data/output/"
+
+# Pipeline Configuration
+pipeline:
+  extract_frequency: "daily"  # How often to extract data
+  batch_size: 10
+  timeout: 30  # API request timeout in seconds
+  retry_attempts: 3
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  file: "./logs/pipeline.log"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Monitoring Configuration
+monitoring:
+  prometheus_port: 8000
+  metrics_path: "/metrics"
